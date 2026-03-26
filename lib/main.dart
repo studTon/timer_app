@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:audioplayers/audioplayers.dart'; // Import the audioplayers package
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const MainApp());
@@ -16,11 +17,29 @@ class MainApp extends StatefulWidget {
 class _MainAppState extends State<MainApp> {
   int _currentIndex = 0;
   int _workDuration = 25; // Default timer duration in minutes
+  static const String _durationKey = 'work_duration';
 
-  void _updateDuration(int newDuration) {
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  // Load the saved duration from disk
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _workDuration = prefs.getInt(_durationKey) ?? 25;
+    });
+  }
+
+  // Save the new duration to disk
+  Future<void> _updateDuration(int newDuration) async {
     setState(() {
       _workDuration = newDuration;
     });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_durationKey, newDuration);
   }
 
   @override
