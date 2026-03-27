@@ -16,8 +16,11 @@ class MainApp extends StatefulWidget {
 
 class _MainAppState extends State<MainApp> {
   int _currentIndex = 0;
-  int _workDuration = 25; // Default timer duration in minutes
-  static const String _durationKey = 'work_duration';
+  int _workMinutes = 25;
+  int _workSeconds = 0;
+  static const String _minutesKey = 'work_minutes';
+  static const String _secondsKey = 'work_seconds';
+  bool _isInitialized = false;
 
   @override
   void initState() {
@@ -25,30 +28,37 @@ class _MainAppState extends State<MainApp> {
     _loadSettings();
   }
 
-  // Load the saved duration from disk
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _workDuration = prefs.getInt(_durationKey) ?? 25;
+      _workMinutes = prefs.getInt(_minutesKey) ?? 25;
+      _workSeconds = prefs.getInt(_secondsKey) ?? 0;
+      _isInitialized = true;
     });
   }
 
-  // Save the new duration to disk
-  Future<void> _updateDuration(int newDuration) async {
+  Future<void> _updateSettings(int newMinutes, int newSeconds) async {
     setState(() {
-      _workDuration = newDuration;
+      _workMinutes = newMinutes;
+      _workSeconds = newSeconds;
     });
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_durationKey, newDuration);
+    await prefs.setInt(_minutesKey, newMinutes);
+    await prefs.setInt(_secondsKey, newSeconds);
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!_isInitialized) {
+      return const MaterialApp(home: Scaffold(body: Center(child: CircularProgressIndicator())));
+    }
+
     final List<Widget> screens = [
-      TimerPage(initialMinutes: _workDuration),
+      TimerPage(initialSeconds: (_workMinutes * 60) + _workSeconds),
       SettingsPage(
-        currentDuration: _workDuration,
-        onDurationChanged: _updateDuration,
+        currentMinutes: _workMinutes,
+        currentSeconds: _workSeconds,
+        onSettingsChanged: _updateSettings,
       ),
     ];
 
@@ -78,8 +88,8 @@ class _MainAppState extends State<MainApp> {
 }
 
 class TimerPage extends StatefulWidget {
-  final int initialMinutes;
-  const TimerPage({super.key, required this.initialMinutes});
+  final int initialSeconds;
+  const TimerPage({super.key, required this.initialSeconds});
 
   @override
   State<TimerPage> createState() => _TimerPageState();
@@ -94,17 +104,17 @@ class _TimerPageState extends State<TimerPage> {
   @override
   void initState() {
     super.initState();
-    _secondsRemaining = widget.initialMinutes * 60;
+    _secondsRemaining = widget.initialSeconds;
   }
 
   // Reset the timer if the settings change
   @override
   void didUpdateWidget(TimerPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialMinutes != widget.initialMinutes) {
+    if (oldWidget.initialSeconds != widget.initialSeconds) {
       _stopTimer();
       setState(() {
-        _secondsRemaining = widget.initialMinutes * 60;
+        _secondsRemaining = widget.initialSeconds;
       });
     }
   }
@@ -144,7 +154,7 @@ class _TimerPageState extends State<TimerPage> {
 
   void _resetTimer() {
     _stopTimer();
-    setState(() => _secondsRemaining = widget.initialMinutes * 60);
+    setState(() => _secondsRemaining = widget.initialSeconds);
   }
 
   @override
@@ -179,15 +189,32 @@ class _TimerPageState extends State<TimerPage> {
   }
 }
 
-class SettingsPage extends StatelessWidget {
-  final int currentDuration;
-  final Function(int) onDurationChanged;
+class SettingsPage extends StatefulWidget {
+  final int currentMinutes;
+  final int currentSeconds;
+  final Function(int, int) onSettingsChanged;
 
   const SettingsPage({
     super.key,
-    required this.currentDuration,
-    required this.onDurationChanged,
+    required this.currentMinutes,
+    required this.currentSeconds,
+    required this.onSettingsChanged,
   });
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  late int _tempMinutes;
+  late int _tempSeconds;
+
+  @override
+  void initState() {
+    super.initState();
+    _tempMinutes = widget.currentMinutes;
+    _tempSeconds = widget.currentSeconds;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -197,18 +224,59 @@ class SettingsPage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 80),
-          const Text('Set up', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
+          const Text('Set up',
+              style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
           const SizedBox(height: 40),
-          Text('Duration: $currentDuration min'),
+          Text('Minutes: $_tempMinutes'),
           Slider(
             activeColor: const Color.fromARGB(255, 255, 255, 255),
             inactiveColor: const Color.fromARGB(255, 0, 4, 128),
-            value: currentDuration.toDouble(),
-            min: 1,
+            value: _tempMinutes.toDouble(),
+            min: 0,
             max: 60,
             divisions: 59,
-            label: currentDuration.toString(),
-            onChanged: (value) => onDurationChanged(value.toInt()),
+            label: _tempMinutes.toString(),
+            onChanged: (value) {
+              setState(() {
+                _tempMinutes = value.toInt();
+              });
+            },
+          ),
+          const SizedBox(height: 10),
+          Text('Seconds: $_tempSeconds'),
+          Slider(
+            activeColor: const Color.fromARGB(255, 255, 255, 255),
+            inactiveColor: const Color.fromARGB(255, 0, 4, 128),
+            value: _tempSeconds.toDouble(),
+            min: 0,
+            max: 59,
+            divisions: 59,
+            label: _tempSeconds.toString(),
+            onChanged: (value) {
+              setState(() {
+                _tempSeconds = value.toInt();
+              });
+            },
+          ),
+          const SizedBox(height: 20),
+          Center(
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color.fromARGB(255, 255, 255, 255),
+                foregroundColor: const Color.fromARGB(255, 9, 67, 168),
+              ),
+              onPressed: () {
+                widget.onSettingsChanged(_tempMinutes, _tempSeconds);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Saved with success!'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.save_as_rounded),
+              label: const Text('Save Settings'),
+            ),
           ),
         ],
       ),
